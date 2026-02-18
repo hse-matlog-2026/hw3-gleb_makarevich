@@ -12,7 +12,8 @@ from typing import Mapping, Optional, Set, Tuple, Union
 
 from logic_utils import frozen, memoized_parameterless_method
 
-@lru_cache(maxsize=100) # Cache the return value of is_variable
+
+@lru_cache(maxsize=100)  # Cache the return value of is_variable
 def is_variable(string: str) -> bool:
     """Checks if the given string is a variable name.
 
@@ -22,10 +23,14 @@ def is_variable(string: str) -> bool:
     Returns:
         ``True`` if the given string is a variable name, ``False`` otherwise.
     """
-    return string[0] >= 'p' and string[0] <= 'z' and \
-           (len(string) == 1 or string[1:].isdecimal())
+    return (
+        string[0] >= 'p'
+        and string[0] <= 'z'
+        and (len(string) == 1 or string[1:].isdecimal())
+    )
 
-@lru_cache(maxsize=100) # Cache the return value of is_constant
+
+@lru_cache(maxsize=100)  # Cache the return value of is_constant
 def is_constant(string: str) -> bool:
     """Checks if the given string is a constant.
 
@@ -37,7 +42,8 @@ def is_constant(string: str) -> bool:
     """
     return string == 'T' or string == 'F'
 
-@lru_cache(maxsize=100) # Cache the return value of is_unary
+
+@lru_cache(maxsize=100)  # Cache the return value of is_unary
 def is_unary(string: str) -> bool:
     """Checks if the given string is a unary operator.
 
@@ -49,7 +55,8 @@ def is_unary(string: str) -> bool:
     """
     return string == '~'
 
-@lru_cache(maxsize=100) # Cache the return value of is_binary
+
+@lru_cache(maxsize=100)  # Cache the return value of is_binary
 def is_binary(string: str) -> bool:
     """Checks if the given string is a binary operator.
 
@@ -59,9 +66,10 @@ def is_binary(string: str) -> bool:
     Returns:
         ``True`` if the given string is a binary operator, ``False`` otherwise.
     """
-    return string == '&' or string == '|' or string == '->'
+    # return string == '&' or string == '|' or string == '->'
     # For Chapter 3:
-    # return string in {'&', '|',  '->', '+', '<->', '-&', '-|'}
+    return string in {'&', '|', '->', '+', '<->', '-&', '-|'}
+
 
 @frozen
 class Formula:
@@ -76,12 +84,17 @@ class Formula:
         second (`~typing.Optional`\\[`Formula`]): the second operand of the
             root, if the root is a binary operator.
     """
+
     root: str
     first: Optional[Formula]
     second: Optional[Formula]
 
-    def __init__(self, root: str, first: Optional[Formula] = None,
-                 second: Optional[Formula] = None):
+    def __init__(
+        self,
+        root: str,
+        first: Optional[Formula] = None,
+        second: Optional[Formula] = None,
+    ):
         """Initializes a `Formula` from its root and root operands.
 
         Parameters:
@@ -174,9 +187,8 @@ class Formula:
         if is_unary(self.root):
             return {self.root}.union(self.first.operators())
         assert is_binary(self.root)
-        return {self.root}.union(self.first.operators(),
-                                 self.second.operators())
-        
+        return {self.root}.union(self.first.operators(), self.second.operators())
+
     @staticmethod
     def _parse_prefix(string: str) -> Tuple[Union[Formula, None], str]:
         """Parses a prefix of the given string into a formula.
@@ -254,7 +266,7 @@ class Formula:
         """
         formula, remainder = Formula._parse_prefix(string)
         return formula is not None and remainder == ''
-        
+
     @staticmethod
     def parse(string: str) -> Formula:
         """Parses the given valid string representation into a formula.
@@ -293,6 +305,7 @@ class Formula:
         Returns:
             A formula whose polish notation representation is the given string.
         """
+
         def parse_prefix(s: str) -> Tuple[Union[Formula, None], str]:
             if s == '':
                 return None, 'Unexpected end of input'
@@ -336,8 +349,7 @@ class Formula:
         assert formula is not None and remainder == ''
         return formula
 
-    def substitute_variables(self, substitution_map: Mapping[str, Formula]) -> \
-            Formula:
+    def substitute_variables(self, substitution_map: Mapping[str, Formula]) -> Formula:
         """Substitutes in the current formula, each variable name `v` that is a
         key in `substitution_map` with the formula `substitution_map[v]`.
 
@@ -360,9 +372,33 @@ class Formula:
         for variable in substitution_map:
             assert is_variable(variable)
         # Task 3.3
+        if is_variable(self.root):
+            if self.root in substitution_map:
+                return substitution_map[self.root]
+            return self
 
-    def substitute_operators(self, substitution_map: Mapping[str, Formula]) -> \
-            Formula:
+        if is_constant(self.root):
+            return self
+
+        if is_unary(self.root):
+            if self.first is None:
+                raise ValueError
+
+            return Formula(self.root, self.first.substitute_variables(substitution_map))
+
+        if self.first is None:
+            raise ValueError
+
+        if self.second is None:
+            raise ValueError
+
+        return Formula(
+            self.root,
+            self.first.substitute_variables(substitution_map),
+            self.second.substitute_variables(substitution_map),
+        )
+
+    def substitute_operators(self, substitution_map: Mapping[str, Formula]) -> Formula:
         """Substitutes in the current formula, each constant or operator `op`
         that is a key in `substitution_map` with the formula
         `substitution_map[op]` applied to its (zero or one or two) operands,
@@ -386,7 +422,41 @@ class Formula:
             ~(~~(~x|~y)|~~z)
         """
         for operator in substitution_map:
-            assert is_constant(operator) or is_unary(operator) or \
-                   is_binary(operator)
+            assert is_constant(operator) or is_unary(operator) or is_binary(operator)
             assert substitution_map[operator].variables().issubset({'p', 'q'})
         # Task 3.4
+        if is_variable(self.root):
+            return self
+
+        if is_constant(self.root):
+            if self.root in substitution_map:
+                return substitution_map[self.root]
+            return self
+
+        if is_unary(self.root):
+            if self.first is None:
+                raise ValueError
+
+            our_new_first = self.first.substitute_operators(substitution_map)
+
+            if self.root in substitution_map:
+                return substitution_map[self.root].substitute_variables(
+                    {'p': our_new_first}
+                )
+
+            else:
+                return Formula(self.root, our_new_first)
+
+        if self.first is None or self.second is None:
+            raise ValueError
+
+        our_new_first = self.first.substitute_operators(substitution_map)
+        our_new_second = self.second.substitute_operators(substitution_map)
+
+        if self.root in substitution_map:
+            return substitution_map[self.root].substitute_variables(
+                {'p': our_new_first, 'q': our_new_second}
+            )
+
+        else:
+            return Formula(self.root, our_new_first, our_new_second)
